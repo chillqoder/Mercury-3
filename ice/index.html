@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark" />
+<title>Low-Poly Ice Cream Sundae — Three.js</title>
+<style>
+  :root{
+    --ink: #fdf3f7;
+    --panel: rgba(38, 26, 38, .42);
+  }
+  *{ box-sizing: border-box; margin: 0; padding: 0; }
+  html, body{ height: 100%; overflow: hidden; }
+  body{
+    font-family: "SF Pro Display", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background:
+      radial-gradient(120% 90% at 50% 12%, #ffe9f1 0%, #e8d5f2 34%, #cdd9f5 62%, #b8c9ef 100%);
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas#scene{ display: block; width: 100vw; height: 100vh; }
+  .ui{ position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  .brand{
+    position: absolute; top: 22px; left: 26px;
+    background: var(--panel);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.28);
+    padding: 12px 18px; border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(60,30,60,.18);
+  }
+  .brand h1{ font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+  .brand p{ font-size: 11.5px; opacity: .78; margin-top: 3px; letter-spacing: .3px; }
+  .controls{ position: absolute; top: 22px; right: 26px; display: flex; gap: 10px; pointer-events: auto; }
+  .pill{
+    appearance: none; border: none; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: #fff; padding: 11px 18px; border-radius: 999px;
+    background: linear-gradient(135deg, #ff9ec7, #ff7ab0);
+    box-shadow: 0 8px 24px rgba(255,122,176,.35);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .pill:hover{ transform: translateY(-2px) scale(1.04); }
+  .pill:active{ transform: translateY(0) scale(.97); }
+  .pill.on{ background: linear-gradient(135deg, #ffb35c, #ff7a3d); box-shadow: 0 8px 26px rgba(255,122,61,.4); }
+  .hint{
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: .4px; opacity: .65;
+    background: var(--panel); padding: 8px 16px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.2); backdrop-filter: blur(10px);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div class="ui">
+  <div class="brand">
+    <h1>🍨 Low-Poly Sundae</h1>
+    <p>procedural primitives · glossy dripping glaze · sparkle particles</p>
+  </div>
+  <div class="controls">
+    <button id="meltBtn" class="pill" title="Press M or click">🔥 Melt</button>
+  </div>
+  <div class="hint">drag to orbit · scroll to zoom · press M for melt</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+const COLORS = {
+  ice      : 0xffb3d1,   // pastel pink ice cream
+  iceVar   : [0.90, 1.0, 1.08],
+  glaze    : 0x6b4526,   // glossy chocolate glaze
+  glazeLight: 0x8a5c34,
+  cherry   : 0xd83a5b,
+  stem     : 0x4a6b3a,
+  cone     : 0xc99a5f,
+  plate    : 0xc8e7da,
+  rim      : 0xeaf6ef,
+  table    : 0xd9d3c9,
+  pool     : 0x553620,
+  sparkGold: 0xffd9a0,
+  sparkPink: 0xffcce0
+};
+
+/* ------------------------------------------------------------------ */
+/*  Renderer / scene / camera / controls                               */
+/* ------------------------------------------------------------------ */
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(4.1, 3.3, 5.9);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2.5, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 2.4;
+controls.maxDistance = 13;
+controls.maxPolarAngle = 1.5;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.4;
+
+/* Image-based lighting so the glaze & cherry shine */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
+if ('environmentIntensity' in scene) scene.environmentIntensity = 0.7;
+
+/* ------------------------------------------------------------------ */
+/*  Lighting                                                           */
+/* ------------------------------------------------------------------ */
+scene.add(new THREE.HemisphereLight(0xfff6ec, 0x8a7a68, 0.75));
+
+const key = new THREE.DirectionalLight(0xfff1e0, 2.4);
+key.position.set(4.5, 7, 3.5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -6; key.shadow.camera.right = 6;
+key.shadow.camera.top = 6;   key.shadow.camera.bottom = -6;
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 30;
+key.shadow.bias = -0.0004;
+scene.add(key);
+
+const fill = new THREE.PointLight(0xffd9e8, 0.9, 20);
+fill.position.set(-3.6, 2.8, 2.6);
+scene.add(fill);
+
+const rimLight = new THREE.PointLight(0xcfe0ff, 0.8, 22);
+rimLight.position.set(-4.2, 2.6, -5.0);
+scene.add(rimLight);
+
+/* ------------------------------------------------------------------ */
+/*  Materials                                                          */
+/* ------------------------------------------------------------------ */
+const glazeMat = new THREE.MeshPhysicalMaterial({
+  color: COLORS.glaze, roughness: 0.16, metalness: 0.05,
+  clearcoat: 1, clearcoatRoughness: 0.14, flatShading: true
+});
+const glazeMatLight = glazeMat.clone();
+glazeMatLight.color.setHex(COLORS.glazeLight);
+
+const iceMat = new THREE.MeshStandardMaterial({ color: COLORS.ice, flatShading: true, roughness: 0.5, metalness: 0.03 });
+const cherryMat = new THREE.MeshPhysicalMaterial({
+  color: COLORS.cherry, roughness: 0.18, metalness: 0.05,
+  clearcoat: 1, clearcoatRoughness: 0.2, flatShading: true
+});
+const stemMat = new THREE.MeshStandardMaterial({ color: COLORS.stem, roughness: 0.8 });
+const plateMat = new THREE.MeshStandardMaterial({ color: COLORS.plate, roughness: 0.55, flatShading: true });
+const rimMat   = new THREE.MeshStandardMaterial({ color: COLORS.rim, roughness: 0.5, flatShading: true });
+const tableMat = new THREE.MeshStandardMaterial({ color: COLORS.table, roughness: 0.95 });
+const poolMat = new THREE.MeshPhysicalMaterial({
+  color: COLORS.pool, roughness: 0.28, metalness: 0.06,
+  clearcoat: 1, clearcoatRoughness: 0.5, transparent: true, opacity: 0.96, flatShading: true
+});
+
+/* Waffle texture: procedural diagonal lattice on a canvas */
+function makeWaffleTexture() {
+  const s = 256;
+  const c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d');
+  g.fillStyle = '#' + COLORS.cone.toString(16).padStart(6, '0');
+  g.fillRect(0, 0, s, s);
+  g.strokeStyle = 'rgba(169,119,63,.55)';
+  g.lineWidth = 2.2;
+  const d = 26;
+  for (let i = -s; i < s * 2; i += d) {
+    g.beginPath(); g.moveTo(i, 0); g.lineTo(i + s, s); g.stroke();
+    g.beginPath(); g.moveTo(i + s, 0); g.lineTo(i, s); g.stroke();
+  }
+  for (let k = 0; k < 900; k++) {
+    g.fillStyle = `rgba(140,96,52,${0.05 + Math.random() * 0.1})`;
+    g.fillRect(Math.random() * s, Math.random() * s, 1.6, 1.6);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const coneMat = new THREE.MeshStandardMaterial({ map: makeWaffleTexture(), roughness: 0.85, flatShading: true });
+
+/* ------------------------------------------------------------------ */
+/*  Table & plate                                                      */
+/* ------------------------------------------------------------------ */
+const table = new THREE.Mesh(new THREE.BoxGeometry(40, 0.4, 40), tableMat);
+table.position.y = -0.2;
+table.receiveShadow = true;
+scene.add(table);
+
+const plate = new THREE.Mesh(new THREE.CylinderGeometry(2.15, 2.15, 0.24, 36), plateMat);
+plate.position.y = 0.12;
+plate.receiveShadow = true;
+scene.add(plate);
+
+const plateRim = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.09, 10, 48), rimMat);
+plateRim.position.y = 0.245;
+plateRim.receiveShadow = true;
+scene.add(plateRim);
+
+/* ------------------------------------------------------------------ */
+/*  Melting pool (puddle under the sundae)                             */
+/* ------------------------------------------------------------------ */
+const pool = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.035, 24), poolMat);
+pool.position.y = 0.24;
+pool.scale.set(0.55, 1, 0.55);
+pool.receiveShadow = true;
+scene.add(pool);
+
+/* ------------------------------------------------------------------ */
+/*  Sundae — procedural low-poly dessert                               */
+/* ------------------------------------------------------------------ */
+const sundae = new THREE.Group();
+sundae.castShadow = true;
+scene.add(sundae);
+
+/* Waffle cone: cone primitive, apex at the plate, top rim meets scoop */
+const coneGeo = new THREE.ConeGeometry(0.9, 1.9, 12, 6);
+coneGeo.rotateX(Math.PI);         // flip: tip down, opening up
+coneGeo.translate(0, 1.9 / 2, 0); // apex at y=0
+const cone = new THREE.Mesh(coneGeo, coneMat);
+cone.position.y = 0.24;           // apex rests on plate top
+cone.castShadow = true;
+sundae.add(cone);
+
+/* Scoop body: stacked/overlapping spheres arranged in a rising spiral */
+const scoop = new THREE.Group();
+sundae.add(scoop);
+
+function addBlob(r, x, y, z, shade) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), iceMat.clone());
+  m.position.set(x, y, z);
+  m.scale.y = 0.9;
+  m.material.color.multiplyScalar(shade);
+  m.castShadow = true;
+  scoop.add(m);
+}
+addBlob(1.05, 0, 2.42, 0, 1); // base scoop
+const helix = [
+  [0.58, 0.4, 2.6], [0.52, 1.9, 2.92],
+  [0.46, 3.5, 3.22], [0.38, 5.1, 3.5]
+];
+helix.forEach(([r, a, y], i) => addBlob(r, Math.cos(a) * 0.4, y, Math.sin(a) * 0.4, 1.06 - 0.03 * i));
+addBlob(0.3, 0, 3.76, 0, 1.08); // swirl tip on the axis, above the glaze
+
+/* Glossy glaze cap: hemisphere primitive draped over the scoop */
+const glazeGeo = new THREE.SphereGeometry(1.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+const glaze = new THREE.Mesh(glazeGeo, glazeMat);
+glaze.position.set(0, 2.42, 0);
+glaze.scale.y = 0.86;
+glaze.castShadow = true;
+sundae.add(glaze);
+
+/* Drips: cylinder + sphere-tip groups that grow downward from the glaze */
+const drips = [];
+const DRIP_DEFS = [
+  // ring around the scoop
+  ...Array.from({ length: 12 }, (_, i) => ({
+    a: i / 12 * Math.PI * 2 + (Math.random() - 0.5) * 0.5,
+    rad: 1.08, y: 2.42,
+    len: 0.5 + Math.random() * 0.6, r: 0.10 + Math.random() * 0.035,
+    period: 7 + Math.random() * 5
+  })),
+  // long drips sliding down the cone flank
+  ...Array.from({ length: 3 }, () => ({
+    a: Math.random() * Math.PI * 2,
+    rad: 0.79, y: 1.9,
+    len: 0.6 + Math.random() * 0.4, r: 0.075 + Math.random() * 0.02,
+    period: 11 + Math.random() * 5
+  }))
+];
+DRIP_DEFS.forEach(def => {
+  const g = new THREE.Group();
+  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(def.r, def.r * 0.7, def.len, 6, 1), glazeMatLight);
+  cyl.geometry.translate(0, -def.len / 2, 0); // top of cylinder at pivot
+  const tip = new THREE.Mesh(new THREE.IcosahedronGeometry(def.r * 1.4, 0), glazeMatLight);
+  tip.position.set(0, -def.len, 0);
+  g.add(cyl, tip);
+  g.position.set(Math.cos(def.a) * def.rad, def.y, Math.sin(def.a) * def.rad);
+  g.rotation.z = (Math.random() - 0.5) * 0.08;
+  g.scale.y = 0.12; // hidden until it starts growing
+  g.castShadow = true;
+  sundae.add(g);
+  drips.push({
+    el: g, def,
+    state: 0, p: 0.12, hold: 0, // state 0 grow, 1 hold, 2 retract
+    growT: def.period * 0.7, holdT: 0.7 + Math.random() * 0.5,
+    retT: 0.9 + Math.random() * 0.6
+  });
+});
+
+/* Cherry on top */
+const cherryG = new THREE.Group();
+sundae.add(cherryG);
+const cherry = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), cherryMat);
+cherry.position.set(0, 4.1, 0); // sits on the swirl tip, on the axis
+cherry.castShadow = true;
+cherryG.add(cherry);
+/* Stem: curved tube rising from the cherry top, with a small leaf */
+const stemCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 4.2, 0), new THREE.Vector3(0.01, 4.36, 0),
+  new THREE.Vector3(0.07, 4.47, 0), new THREE.Vector3(0.16, 4.5, 0)
+]);
+const stem = new THREE.Mesh(new THREE.TubeGeometry(stemCurve, 8, 0.028, 5, false), stemMat);
+stem.castShadow = true;
+cherryG.add(stem);
+const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), stemMat);
+leaf.scale.set(1.6, 0.25, 0.9);
+leaf.position.set(0.1, 4.36, 0);
+leaf.rotation.z = -0.5;
+leaf.castShadow = true;
+cherryG.add(leaf);
+const glint = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+glint.position.set(-0.07, 4.2, 0.15);
+cherryG.add(glint);
+
+/* ------------------------------------------------------------------ */
+/*  Particle system 1 — dripping droplets (instanced low-poly blobs)   */
+/* ------------------------------------------------------------------ */
+const MAX_DROPS = 90;
+const drops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.11, 0), glazeMat, MAX_DROPS);
+drops.castShadow = false;
+scene.add(drops);
+
+const DSTATE = Array.from({ length: MAX_DROPS }, () => ({
+  pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+  life: 0, ttl: 0, s: 1
+}));
+const _tmp = new THREE.Object3D();
+for (let i = 0; i < MAX_DROPS; i++) {
+  _tmp.scale.setScalar(0);
+  _tmp.updateMatrix();
+  drops.setMatrixAt(i, _tmp.matrix);
+}
+drops.instanceMatrix.needsUpdate = true;
+
+let nextDrop = 0;
+const _v = new THREE.Vector3();
+function dripTipWorld(d) { return d.el.children[1].getWorldPosition(_v); }
+function spawnDroplet(pos) {
+  const s = DSTATE[nextDrop];
+  nextDrop = (nextDrop + 1) % MAX_DROPS;
+  s.pos.copy(pos);
+  s.vel.set((Math.random() - 0.5) * 0.35, 0.15 + Math.random() * 0.3, (Math.random() - 0.5) * 0.35);
+  s.life = 0; s.ttl = 2.2; s.s = 1;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Particle system 2 — twinkling sparkles (GPU points)                */
+/* ------------------------------------------------------------------ */
+const SPARK_N = 170;
+const spPos = new Float32Array(SPARK_N * 3);
+const spSeed = new Float32Array(SPARK_N);
+const spSize = new Float32Array(SPARK_N);
+const spCol = new Float32Array(SPARK_N * 3);
+const _cc = new THREE.Color();
+for (let i = 0; i < SPARK_N; i++) {
+  const y = 1.9 + Math.random() * 1.85;
+  const a = Math.random() * Math.PI * 2;
+  const r = 0.7 + Math.random() * 0.55;
+  spPos[i * 3]     = Math.cos(a) * r;
+  spPos[i * 3 + 1] = y;
+  spPos[i * 3 + 2] = Math.sin(a) * r;
+  spSeed[i] = Math.random();
+  spSize[i] = 24 + Math.random() * 58;
+  _cc.setHex(Math.random() < 0.5 ? COLORS.sparkGold : COLORS.sparkPink);
+  spCol[i * 3] = _cc.r; spCol[i * 3 + 1] = _cc.g; spCol[i * 3 + 2] = _cc.b;
+}
+const sparkGeo = new THREE.BufferGeometry();
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(spPos, 3));
+sparkGeo.setAttribute('aSeed', new THREE.BufferAttribute(spSeed, 1));
+sparkGeo.setAttribute('aSize', new THREE.BufferAttribute(spSize, 1));
+sparkGeo.setAttribute('aColor', new THREE.BufferAttribute(spCol, 3));
+
+const sparkUnif = {
+  uTime: { value: 0 },
+  uPixelRatio: { value: renderer.getPixelRatio() },
+  uSpeed: { value: 1 },
+  uBurst: { value: 0 }
+};
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: sparkUnif,
+  vertexShader: `
+    attribute float aSeed; attribute float aSize; attribute vec3 aColor;
+    uniform float uTime; uniform float uPixelRatio; uniform float uSpeed; uniform float uBurst;
+    varying vec3 vColor; varying float vA;
+    void main(){
+      vec3 p = position;
+      float life = fract(uTime * uSpeed + aSeed * (1.0 + uBurst * 6.0));
+      p.y += life * 0.22;
+      float tw = sin(life * 40.0 + aSeed * 100.0);
+      vA = pow(sin(life * 3.14159), 2.0) * (0.55 + 0.45 * tw);
+      vA *= smoothstep(0.0, 0.07, life) * smoothstep(1.0, 0.9, life);
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = aSize * uPixelRatio * (0.7 + 0.5 * tw) * (1.0 - life * 0.35);
+      vColor = aColor;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vA;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.05, d) * vA;
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(vColor, a);
+    }`,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const sparkles = new THREE.Points(sparkGeo, sparkMat);
+sparkles.frustumCulled = false;
+scene.add(sparkles);
+
+/* ------------------------------------------------------------------ */
+/*  Animation state                                                    */
+/* ------------------------------------------------------------------ */
+let melt = false;
+let meltAmt = 0; // smoothed 0..1
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function spawnDropletCount(count) {
+  for (let i = 0; i < count; i++) {
+    const d = drips[(Math.random() * drips.length) | 0];
+    spawnDroplet(dripTipWorld(d));
+  }
+}
+
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+  const t = elapsed;
+  meltAmt += ((melt ? 1 : 0) - meltAmt) * (1 - Math.exp(-2.5 * dt));
+
+  /* --- idle wobble --- */
+  sundae.rotation.z = Math.sin(t * 0.85) * 0.02;
+  sundae.rotation.x = Math.cos(t * 0.70) * 0.016;
+
+  /* --- melting slump (scoop sags & spreads) --- */
+  const slump = 1 - 0.08 * meltAmt;
+  scoop.scale.set(1 + 0.05 * meltAmt, slump, 1 + 0.05 * meltAmt);
+  scoop.position.y = (1 - slump) * 0.3 + Math.sin(t * 1.4) * 0.008 * (1 - meltAmt * 0.6);
+
+  /* --- cherry bob --- */
+  cherryG.rotation.y = t * 0.6;
+  cherryG.position.y = Math.sin(t * 2.2) * 0.012;
+
+  /* --- puddle grows with melt, gentle wobble --- */
+  const poolScale = 0.55 + meltAmt * 1.15;
+  pool.scale.set(
+    poolScale * (1 + Math.sin(t * 2.1) * 0.025),
+    1,
+    poolScale * (1 + Math.cos(t * 1.7) * 0.025)
+  );
+
+  /* --- glaze drips: grow / hold / drop a droplet / retract --- */
+  const meltMul = 1 + meltAmt * 2.6;
+  for (const d of drips) {
+    if (d.state === 0) {
+      d.p += dt / d.growT * meltMul;
+      if (d.p >= 1) { d.p = 1; d.state = 1; d.hold = 0; }
+    } else if (d.state === 1) {
+      d.hold += dt;
+      if (d.hold >= d.holdT) {
+        spawnDroplet(dripTipWorld(d));
+        d.state = 2;
+      }
+    } else {
+      d.p -= dt / d.retT;
+      if (d.p <= 0.12) {
+        d.p = 0.12; d.state = 0;
+        d.growT = d.def.period * 0.7 * (0.7 + Math.random() * 0.6);
+      }
+    }
+    d.el.scale.y = d.p;
+  }
+
+  /* --- continuous trickle while melting --- */
+  if (meltAmt > 0.3 && Math.random() < 0.3) spawnDropletCount(1);
+
+  /* --- droplet physics --- */
+  for (let i = 0; i < MAX_DROPS; i++) {
+    const s = DSTATE[i];
+    if (s.life >= s.ttl) continue;
+    s.life += dt;
+    s.vel.y -= 9.8 * dt;
+    s.pos.addScaledVector(s.vel, dt);
+    s.s *= Math.max(0, 1 - dt * 1.5);
+    if (s.pos.y < 0.26) s.life = s.ttl; // splat on plate / puddle
+    _tmp.position.copy(s.pos);
+    _tmp.scale.setScalar(Math.max(0.001, s.s));
+    _tmp.rotation.set(0, 0, 0);
+    _tmp.updateMatrix();
+    drops.setMatrixAt(i, _tmp.matrix);
+  }
+  drops.instanceMatrix.needsUpdate = true;
+
+  /* --- sparkles --- */
+  sparkUnif.uTime.value = t;
+  sparkUnif.uSpeed.value = 0.9 + meltAmt * 1.5;
+  sparkUnif.uBurst.value = Math.max(0, sparkUnif.uBurst.value - dt * 1.4);
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(animate);
+
+/* ------------------------------------------------------------------ */
+/*  Resize                                                             */
+/* ------------------------------------------------------------------ */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ------------------------------------------------------------------ */
+/*  UI                                                                 */
+/* ------------------------------------------------------------------ */
+const meltBtn = document.getElementById('meltBtn');
+function setMelt(v) {
+  melt = v;
+  meltBtn.classList.toggle('on', v);
+  meltBtn.textContent = v ? '❄ Chill' : '🔥 Melt';
+  sparkUnif.uBurst.value = 1; // sparkle burst on toggle
+}
+meltBtn.addEventListener('click', () => setMelt(!melt));
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm') setMelt(!melt); });
+</script>
+</body>
+</html>

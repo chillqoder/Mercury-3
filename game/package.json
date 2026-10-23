@@ -1,0 +1,19 @@
+{
+  "name": "low-poly-mario",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Low Poly Mario - a voxel browser platformer inspired by Super Mario Bros. World 1-1",
+  "scripts": {
+    "test": "node tests/probes.mjs",
+    "test:full": "node tests/run.mjs",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "serve": "python3 -m http.server 8765"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.57.0"
+  }
+}

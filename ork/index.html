@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orc Warrior — Battle Axe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #141417; font-family: "Segoe UI", system-ui, sans-serif; }
+  canvas { display: block; }
+
+  /* ---- UI overlay ---- */
+  #ui { position: fixed; inset: 0; pointer-events: none; text-align: center; }
+  #title {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+    color: #e8e4da; font-size: 20px; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,.7);
+  }
+  #hint {
+    position: absolute; top: 54px; left: 50%; transform: translateX(-50%);
+    color: #8f8b82; font-size: 12px; letter-spacing: 1px;
+  }
+
+  /* ---- Attack button ---- */
+  #attackBtn {
+    position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%);
+    padding: 14px 48px; font-size: 18px; font-weight: 700; letter-spacing: 3px;
+    color: #ffe9dc; background: linear-gradient(180deg, #a62828, #6d1212);
+    border: 1px solid #c84444; border-radius: 40px; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.18);
+    transition: transform .12s, box-shadow .2s, filter .2s;
+    text-transform: uppercase; user-select: none;
+  }
+  #attackBtn:hover {
+    filter: brightness(1.12);
+    box-shadow: 0 0 26px rgba(255,80,40,.45), 0 4px 18px rgba(0,0,0,.55);
+  }
+  #attackBtn:active { transform: translateX(-50%) scale(.93); }
+
+  /* ---- Screen flash overlay ---- */
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="ui">
+  <div id="title">Orc Warrior — Click to Attack</div>
+  <div id="hint">Drag to rotate · Scroll to zoom</div>
+</div>
+<button id="attackBtn">Attack!</button>
+<div id="flash"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ============================================================
+   RENDERER / SCENE / CAMERA / CONTROLS
+   ============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1f);
+scene.fog = new THREE.Fog(0x1a1a1f, 10, 24);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(3, 3, 6);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.2, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 2.5;
+controls.maxDistance = 14;
+controls.maxPolarAngle = Math.PI * 0.48;
+
+// Simple image-based environment so metals & skin respond nicely to light
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+/* ============================================================
+   MATERIALS
+   ============================================================ */
+const skinMat    = new THREE.MeshStandardMaterial({ color: 0x4a7c3a, roughness: 0.7,  metalness: 0.05 });
+const skinDarkMat= new THREE.MeshStandardMaterial({ color: 0x3f6b31, roughness: 0.75, metalness: 0.05 });
+const metalMat   = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.28, metalness: 0.9 });
+const woodMat    = new THREE.MeshStandardMaterial({ color: 0x5b3a22, roughness: 0.8,  metalness: 0.0 });
+const leatherMat = new THREE.MeshStandardMaterial({ color: 0x3b2a20, roughness: 0.85, metalness: 0.0 });
+const boneMat    = new THREE.MeshStandardMaterial({ color: 0xe8e0c8, roughness: 0.5,  metalness: 0.0 });
+const eyeWhiteMat= new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.35, metalness: 0.0 });
+const pupilMat   = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.2,  metalness: 0.1 });
+const paintMat   = new THREE.MeshStandardMaterial({ color: 0x8a2424, roughness: 0.8,  metalness: 0.0 });
+const knotMat    = new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 0.9,  metalness: 0.0 });
+
+/* ============================================================
+   GROUND
+   ============================================================ */
+function setupGround() {
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(6, 48),
+    new THREE.MeshStandardMaterial({ color: 0x2c3327, roughness: 0.95, metalness: 0 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // subtle darker under-ring for depth
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.6, 2.75, 48),
+    new THREE.MeshBasicMaterial({ color: 0x161a13, transparent: true, opacity: 0.5 })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.005;
+  scene.add(ring);
+}
+
+/* ============================================================
+   LIGHTING
+   ============================================================ */
+function setupLights() {
+  // ambient fill
+  const hemi = new THREE.HemisphereLight(0x3a4a5a, 0x14140f, 0.75);
+  scene.add(hemi);
+
+  // warm key light with shadows
+  const dir = new THREE.DirectionalLight(0xffd9a0, 2.2);
+  dir.position.set(4, 6, 4);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(2048, 2048);
+  dir.shadow.camera.near = 0.5;
+  dir.shadow.camera.far = 20;
+  const d = 5;
+  dir.shadow.camera.left = -d; dir.shadow.camera.right = d;
+  dir.shadow.camera.top = d;   dir.shadow.camera.bottom = -d;
+  dir.shadow.bias = -0.0004;
+  scene.add(dir);
+
+  // menacing red rim light near the axe side
+  const rim = new THREE.PointLight(0xff5533, 14, 9, 1.8);
+  rim.position.set(-2.8, 1.6, 2.8);
+  scene.add(rim);
+
+  // cool back fill
+  const fill = new THREE.PointLight(0x3d5a80, 6, 10, 2);
+  fill.position.set(0, 1.5, -4);
+  scene.add(fill);
+}
+
+/* ============================================================
+   AXE (procedural)
+   ============================================================ */
+
+// Crescent blade profile: a flat teardrop-ish shape, extruded for thickness.
+function createBladeGeometry() {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0.18);
+  s.quadraticCurveTo(0.25, 0.42, 0.62, 0.30); // top / back edge
+  s.quadraticCurveTo(0.95, 0.22, 1.0, 0.08);
+  s.quadraticCurveTo(0.80, -0.22, 0.42, -0.16); // cutting edge (bulges down)
+  s.quadraticCurveTo(0.18, -0.12, 0.05, 0.0);
+  s.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(s, {
+    depth: 0.10,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    bevelSize: 0.03,
+    bevelThickness: 0.03,
+    curveSegments: 12,
+  });
+  geo.translate(0, 0, -0.05); // center the thickness on Z
+  return geo;
+}
+
+function createAxe() {
+  const axe = new THREE.Group();
+
+  // Handle — long wood cylinder along Y
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 1.4, 12), woodMat);
+  handle.position.y = 0.55;
+  handle.castShadow = true;
+  axe.add(handle);
+
+  // Leather grip wrap (thin torus rings) near the lower end
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.016, 8, 16), leatherMat);
+    ring.position.y = 0.12 + i * 0.07;
+    ring.rotation.x = Math.PI / 2;
+    axe.add(ring);
+  }
+
+  // Central socket block
+  const socket = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.14), metalMat);
+  socket.position.y = 1.18;
+  socket.castShadow = true;
+  axe.add(socket);
+
+  // Two crescent blades, mirrored on either side of the socket
+  const bladeGeo = createBladeGeometry();
+  const bladeR = new THREE.Mesh(bladeGeo, metalMat);
+  bladeR.position.set(0.04, 1.12, 0);
+  bladeR.scale.setScalar(0.6);
+  bladeR.castShadow = true;
+  axe.add(bladeR);
+
+  const bladeL = bladeR.clone();
+  bladeL.scale.x = -0.6;
+  axe.add(bladeL);
+
+  // Top spike
+  const spike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 8), metalMat);
+  spike.position.y = 1.44;
+  axe.add(spike);
+
+  // Marker used as impact origin for the strike effect (right blade edge)
+  const tip = new THREE.Object3D();
+  tip.position.set(0.64, 1.17, 0);
+  axe.add(tip);
+  axe.userData.tip = tip;
+
+  return axe;
+}
+
+/* ============================================================
+   ORC CHARACTER (procedural, hierarchical)
+   ============================================================ */
+function createOrc() {
+  const orc = new THREE.Group();
+
+  /* ---- Torso ---- */
+  const torso = new THREE.Group();
+  torso.position.y = 1.12;
+
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 0.55), skinMat);
+  chest.position.y = 0.08;
+  chest.castShadow = true;
+  torso.add(chest);
+
+  // Pecs
+  const pecGeo = new THREE.BoxGeometry(0.34, 0.28, 0.16);
+  const pecL = new THREE.Mesh(pecGeo, skinDarkMat);
+  pecL.position.set(-0.26, 0.36, 0.27);
+  const pecR = pecL.clone(); pecR.position.x = 0.26;
+  torso.add(pecL, pecR);
+
+  // Abs
+  const abs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.18), skinDarkMat);
+  abs.position.set(0, -0.12, 0.3);
+  torso.add(abs);
+
+  // Leather chest strap
+  const strap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.62), leatherMat);
+  strap.position.set(0, 0.32, 0);
+  strap.rotation.x = 0.5;
+  torso.add(strap);
+
+  // Belt (torus) + buckle
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.055, 10, 24), leatherMat);
+  belt.position.y = -0.42;
+  belt.rotation.x = Math.PI / 2;
+  torso.add(belt);
+
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.08), metalMat);
+  buckle.position.set(0, -0.42, 0.46);
+  torso.add(buckle);
+
+  // Loincloth
+  const loin = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.08), leatherMat);
+  loin.position.set(0, -0.72, 0.2);
+  loin.rotation.x = -0.15;
+  torso.add(loin);
+
+  /* ---- Head ---- */
+  const head = new THREE.Group();
+  head.position.y = 0.72;
+
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.42, 24, 18), skinMat);
+  skull.scale.set(1, 1.12, 0.94);
+  skull.position.y = 0.05;
+  skull.castShadow = true;
+  head.add(skull);
+
+  // Jaw / chin
+  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.3), skinMat);
+  jaw.position.set(0, -0.3, 0.18);
+  head.add(jaw);
+
+  // Eyes (white + pupil)
+  for (const side of [-1, 1]) {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 12), eyeWhiteMat);
+    white.position.set(0.15 * side, 0.02, 0.36);
+    head.add(white);
+
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 10), pupilMat);
+    pupil.position.set(0.15 * side, 0.0, 0.43);
+    head.add(pupil);
+  }
+
+  // Heavy brow ridge
+  const browGeo = new THREE.BoxGeometry(0.42, 0.09, 0.2);
+  for (const side of [-1, 1]) {
+    const brow = new THREE.Mesh(browGeo, skinDarkMat);
+    brow.position.set(0.13 * side, 0.14, 0.33);
+    brow.rotation.z = 0.12 * side;
+    head.add(brow);
+  }
+
+  // Tusks — cones pointing up from the lower jaw
+  for (const side of [-1, 1]) {
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.26, 8), boneMat);
+    tusk.position.set(0.1 * side, -0.36, 0.3);
+    tusk.rotation.z = 0.45 * side; // tilt inward
+    head.add(tusk);
+  }
+
+  // Pointed ears — cones rotated outward
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.34, 8), skinMat);
+    ear.position.set(0.4 * side, 0.08, 0.02);
+    ear.rotation.z = -1.35 * side;
+    ear.rotation.x = 0.5;
+    head.add(ear);
+  }
+
+  // Dark topknot
+  const knot = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 8), knotMat);
+  knot.position.set(0, 0.52, -0.05);
+  head.add(knot);
+
+  // War paint stripes
+  const paintGeo = new THREE.BoxGeometry(0.5, 0.07, 0.06);
+  for (let i = 0; i < 2; i++) {
+    const paint = new THREE.Mesh(paintGeo, paintMat);
+    paint.position.set(0, 0.02 - i * 0.1, 0.39);
+    head.add(paint);
+  }
+
+  torso.add(head);
+
+  /* ---- Arms ---- */
+  function buildArm(side) {
+    const armGroup = new THREE.Group();
+    armGroup.position.set(0.78 * side, 0.42, 0); // shoulder pivot
+
+    // upper arm
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.42, 12), skinMat);
+    upper.position.y = -0.21;
+    upper.castShadow = true;
+    armGroup.add(upper);
+
+    // pauldron
+    const pad = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), leatherMat);
+    pad.position.y = -0.03;
+    pad.scale.set(1.25, 0.9, 1.2);
+    armGroup.add(pad);
+
+    // elbow pivot
+    const foreGroup = new THREE.Group();
+    foreGroup.position.y = -0.42;
+    armGroup.add(foreGroup);
+
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.36, 12), skinMat);
+    fore.position.y = -0.18;
+    fore.castShadow = true;
+    foreGroup.add(fore);
+
+    // leather bracer
+    const bracer = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.18, 12), leatherMat);
+    bracer.position.y = -0.3;
+    foreGroup.add(bracer);
+
+    // oversized hand
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), skinMat);
+    hand.position.y = -0.4;
+    hand.scale.set(1.15, 1.3, 0.9);
+    hand.castShadow = true;
+    foreGroup.add(hand);
+
+    armGroup.userData.fore = foreGroup;
+    armGroup.userData.hand = hand;
+    return armGroup;
+  }
+
+  const leftArm = buildArm(-1);
+  const rightArm = buildArm(1);
+  torso.add(leftArm, rightArm);
+
+  /* ---- Legs ---- */
+  function buildLeg(side) {
+    const legGroup = new THREE.Group();
+    legGroup.position.set(0.28 * side, -0.17, 0); // hip pivot
+
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.15, 0.45, 12), skinMat);
+    thigh.position.y = -0.225;
+    thigh.castShadow = true;
+    legGroup.add(thigh);
+
+    // knee pivot
+    const shinGroup = new THREE.Group();
+    shinGroup.position.y = -0.45;
+    legGroup.add(shinGroup);
+
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.38, 12), skinDarkMat);
+    shin.position.y = -0.19;
+    shin.castShadow = true;
+    shinGroup.add(shin);
+
+    // boot
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.4), leatherMat);
+    boot.position.set(0, -0.42, 0.08);
+    boot.castShadow = true;
+    shinGroup.add(boot);
+
+    return { group: legGroup };
+  }
+
+  const legL = buildLeg(-1);
+  const legR = buildLeg(1);
+  torso.add(legL.group, legR.group);
+
+  /* ---- Axe in the right hand ---- */
+  const axe = createAxe();
+  // Gripped near the top of the handle, head hangs beyond the fist (along the arm)
+  axe.position.set(0, -0.42, 0);
+  axe.rotation.z = Math.PI;
+  rightArm.userData.fore.add(axe);
+
+  orc.add(torso);
+
+  // expose animated joints for the animation system
+  orc.userData = { torso, leftArm, rightArm, legR: legR.group, axe, tip: axe.userData.tip };
+  return orc;
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const flashDiv = document.getElementById('flash');
+
+function setupUI() {
+  document.getElementById('attackBtn').addEventListener('click', playAttack);
+}
+
+/* ============================================================
+   ATTACK ANIMATION (manual keyframe tweening)
+   ============================================================ */
+const STRIKE_TIME = 0.55; // impact moment
+
+// Keyframes for the swing. Channels:
+//   armX/armZ = right arm rotation, torsoX/torsoZ = torso, rootX = whole orc lean, legRX = right leg step
+// Idle "ready" pose: arm carried forward-down so the axe head clears the ground
+const REST_ARM_X = -0.9;
+const swingKeys = [
+  { t: 0.00, armX: REST_ARM_X, armZ: 0,     torsoX: 0,     torsoZ: 0,     rootX: 0,     legRX: 0 },
+  { t: 0.35, armX: 2.5,        armZ: 0.25,  torsoX: -0.25, torsoZ: 0.12,  rootX: -0.12, legRX: 0.25 }, // wind-up: axe raised overhead, behind
+  { t: 0.55, armX: -1.25,      armZ: -0.2,  torsoX: 0.35,  torsoZ: -0.12, rootX: 0.18,  legRX: -0.2 }, // strike: arm down-forward, step in
+  { t: 1.00, armX: REST_ARM_X, armZ: 0,     torsoX: 0,     torsoZ: 0,     rootX: 0,     legRX: 0 },     // recovery
+];
+const channels = ['armX', 'armZ', 'torsoX', 'torsoZ', 'rootX', 'legRX'];
+
+// easing helpers
+const easeOutCubic = u => 1 - Math.pow(1 - u, 3);
+const easeInCubic = u => u * u * u;
+const easeInOutCubic = u => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+// per-segment easings: wind-up (out), strike (in), recovery (in-out)
+const easings = [easeOutCubic, easeInCubic, easeInOutCubic];
+
+function sampleSwing(t) {
+  const k = swingKeys;
+  if (t <= k[0].t) return k[0];
+  for (let i = 0; i < k.length - 1; i++) {
+    if (t <= k[i + 1].t) {
+      const span = k[i + 1].t - k[i].t;
+      const u = span === 0 ? 1 : (t - k[i].t) / span;
+      const e = easings[i](u);
+      const out = {};
+      for (const ch of channels) out[ch] = k[i][ch] + (k[i + 1][ch] - k[i][ch]) * e;
+      return out;
+    }
+  }
+  return k[k.length - 1];
+}
+
+const state = {
+  attacking: false,
+  attackTime: 0,
+  attackDuration: 1.0,
+  impactDone: false,
+  shakeTime: 0,
+  shakeDur: 0.15,
+  flashTime: 0,
+  effects: [], // active particle bursts
+};
+
+function playAttack() {
+  if (state.attacking) return; // guard against re-entry
+  state.attacking = true;
+  state.attackTime = 0;
+  state.impactDone = false;
+}
+
+/* ---- Impact: shake + flash + particles + thud ---- */
+function triggerImpact() {
+  state.shakeTime = state.shakeDur;
+  state.flashTime = 0.18;
+  spawnImpact();
+  playThud();
+}
+
+function spawnImpact() {
+  const tip = orc.userData.tip;
+  tip.updateWorldMatrix(true, false);
+  const worldPos = new THREE.Vector3();
+  tip.getWorldPosition(worldPos);
+
+  const COUNT = 26;
+  const positions = new Float32Array(COUNT * 3);
+  const vel = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    positions[i * 3] = worldPos.x;
+    positions[i * 3 + 1] = worldPos.y;
+    positions[i * 3 + 2] = worldPos.z;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI * 0.5;
+    const speed = 1.6 + Math.random() * 2.4;
+    vel[i * 3]     = Math.sin(phi) * Math.cos(theta) * speed;
+    vel[i * 3 + 1] = Math.cos(phi) * speed * 0.8 + 1.2;
+    vel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const mat = new THREE.PointsMaterial({
+    color: 0xffaa44,
+    size: 0.09,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+  state.effects.push({ points, vel, count: COUNT, life: 0.5, maxLife: 0.5 });
+}
+
+/* ---- Web Audio thud (procedural, no files) ---- */
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playThud() {
+  try {
+    const ctx = ensureAudio();
+    const t0 = ctx.currentTime;
+
+    // low sine thump
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t0);
+    osc.frequency.exponentialRampToValueAtTime(42, t0 + 0.22);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t0);
+    og.gain.exponentialRampToValueAtTime(0.6, t0 + 0.015);
+    og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+    osc.connect(og).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.4);
+
+    // short filtered noise burst for "impact" texture
+    const len = Math.floor(ctx.sampleRate * 0.12);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 500;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.35;
+    src.connect(lp).connect(ng).connect(ctx.destination);
+    src.start(t0);
+  } catch (e) { /* audio unsupported — ignore */ }
+}
+
+/* ============================================================
+   PER-FRAME UPDATE (idle + attack + effects)
+   ============================================================ */
+function updateAnimation(dt) {
+  const t = clock.elapsedTime;
+
+  /* idle: breathing & sway */
+  const breathe = Math.sin(t * 2.2);
+  orc.userData.torso.scale.y = 1 + 0.02 * breathe;
+  orc.userData.torso.rotation.z = 0.03 * Math.sin(t * 1.3);
+
+  /* attack sampling */
+  let off = null;
+  if (state.attacking) {
+    state.attackTime += dt;
+    if (state.attackTime >= state.attackDuration) {
+      state.attacking = false;
+    } else {
+      off = sampleSwing(state.attackTime);
+      if (!state.impactDone && state.attackTime >= STRIKE_TIME) {
+        state.impactDone = true;
+        triggerImpact();
+      }
+    }
+  }
+
+  /* apply pose */
+  const armX = off ? off.armX : REST_ARM_X + 0.04 * Math.sin(t * 1.6);
+  const armZ = off ? off.armZ : 0.02 * Math.sin(t * 1.1);
+  orc.userData.rightArm.rotation.x = armX;
+  orc.userData.rightArm.rotation.z = armZ;
+  orc.userData.rightArm.rotation.y = 0.05 * Math.sin(t * 1.4);
+  orc.userData.leftArm.rotation.x = 0.06 * Math.sin(t * 1.5 + 1);
+  orc.userData.torso.rotation.x = off ? off.torsoX : 0;
+  orc.userData.torso.rotation.z = (off ? off.torsoZ : 0) + 0.03 * Math.sin(t * 1.3);
+  orc.rotation.x = off ? off.rootX : 0;
+  orc.userData.legR.rotation.x = off ? off.legRX : 0;
+
+  /* camera shake (decaying random offsets) */
+  if (state.shakeTime > 0) {
+    state.shakeTime -= dt;
+    const k = Math.max(0, state.shakeTime / state.shakeDur);
+    camera.position.x += (Math.random() - 0.5) * 0.1 * k;
+    camera.position.y += (Math.random() - 0.5) * 0.1 * k;
+    camera.position.z += (Math.random() - 0.5) * 0.1 * k;
+  }
+
+  /* screen flash */
+  if (state.flashTime > 0) {
+    state.flashTime -= dt;
+    flashDiv.style.opacity = (Math.min(1, state.flashTime / 0.18) * 0.5).toFixed(3);
+  } else {
+    flashDiv.style.opacity = 0;
+  }
+
+  /* particle bursts */
+  for (let i = state.effects.length - 1; i >= 0; i--) {
+    const fx = state.effects[i];
+    fx.life -= dt;
+    if (fx.life <= 0) {
+      scene.remove(fx.points);
+      fx.points.geometry.dispose();
+      fx.points.material.dispose();
+      state.effects.splice(i, 1);
+      continue;
+    }
+    const pos = fx.points.geometry.attributes.position;
+    for (let j = 0; j < fx.count; j++) {
+      fx.vel[j * 3 + 1] -= 6 * dt; // gravity
+      pos.array[j * 3]     += fx.vel[j * 3] * dt;
+      pos.array[j * 3 + 1] += fx.vel[j * 3 + 1] * dt;
+      pos.array[j * 3 + 2] += fx.vel[j * 3 + 2] * dt;
+    }
+    pos.needsUpdate = true;
+    fx.points.material.opacity = Math.max(0, fx.life / fx.maxLife) * 0.9;
+  }
+}
+
+/* ============================================================
+   RENDER LOOP
+   ============================================================ */
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  controls.update();
+  updateAnimation(dt);
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+setupGround();
+setupLights();
+const orc = createOrc();
+scene.add(orc);
+setupUI();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

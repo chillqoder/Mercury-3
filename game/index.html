@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#263b36">
+<link rel="icon" href="data:,">
+<title>Low Poly Mario</title>
+<style>
+  :root {
+    --ui-bg: #263b36;
+    --ui-text: #fff6d9;
+    --ui-dim: #b9c9b6;
+    --ui-accent: #ffc93c;
+    --ui-green: #63c74d;
+    --ui-red: #d8372c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1a17; }
+  body {
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    color: var(--ui-text);
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 10px 14px;
+    pointer-events: none;
+    z-index: 10;
+    font-size: 15px; letter-spacing: 1px;
+    text-shadow: 1px 1px 0 rgba(0,0,0,.45);
+  }
+  #hud .hud-group { display: flex; gap: 14px; flex-wrap: wrap; }
+  #hud .hud-item { background: rgba(38,59,54,.72); border: 2px solid rgba(255,246,217,.22); border-radius: 6px; padding: 4px 10px; }
+  #hud .hud-item b { display: block; font-size: 10px; opacity: .75; font-weight: 700; letter-spacing: 1.5px; }
+  #hud .hud-item span { font-variant-numeric: tabular-nums; font-weight: 700; }
+  #hud-buttons { display: flex; gap: 8px; pointer-events: auto; }
+  #hud-buttons button {
+    width: 38px; height: 34px; border: none; border-radius: 6px;
+    background: var(--ui-bg); color: var(--ui-text);
+    font-size: 16px; cursor: pointer;
+    border: 2px solid rgba(255,246,217,.25);
+  }
+  #hud-buttons button:active { transform: scale(.94); background: #1d2e2a; }
+
+  #progress { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: rgba(0,0,0,.3); z-index: 9; }
+  #hud-progress-fill { height: 100%; width: 0%; background: var(--ui-accent); transition: width .15s linear; }
+
+  /* ---------- toasts & popups ---------- */
+  #toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 30; pointer-events: none; }
+  .toast {
+    background: rgba(38,59,54,.9); border: 2px solid var(--ui-accent);
+    color: var(--ui-text); padding: 8px 16px; border-radius: 20px;
+    font-weight: 700; font-size: 14px; letter-spacing: .5px;
+    animation: toastIn .25s ease-out;
+  }
+  .toast.hide { opacity: 0; transition: opacity .25s; }
+  @keyframes toastIn { from { transform: translateY(-8px); opacity: 0; } }
+  #popups { position: fixed; inset: 0; z-index: 25; pointer-events: none; overflow: hidden; }
+  .popup {
+    position: absolute; transform: translate(-50%, -50%);
+    font-weight: 800; font-size: 17px; letter-spacing: .5px;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.5);
+    opacity: 0; transition: all .5s ease-out;
+  }
+  .popup.go { animation: popupGo 1s ease-out forwards; }
+  @keyframes popupGo { 0% { transform: translate(-50%, -40%); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(-50%, -160%); opacity: 0; } }
+
+  /* ---------- star overlay ---------- */
+  #star-overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(ellipse at center, rgba(255,225,74,0) 45%, rgba(255,225,74,.28) 100%);
+    opacity: 0; transition: opacity .6s;
+  }
+
+  /* ---------- overlays ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(13,26,23,.55), rgba(13,26,23,.85));
+  }
+  #overlay.hidden { display: none; }
+  .overlay-card {
+    background: rgba(38,59,54,.96);
+    border: 3px solid var(--ui-accent);
+    border-radius: 14px;
+    padding: 26px 34px;
+    max-width: min(92vw, 460px);
+    max-height: 88vh;
+    overflow-y: auto;
+    text-align: center;
+    box-shadow: 0 18px 60px rgba(0,0,0,.5);
+  }
+  .ov-title { font-size: 34px; font-weight: 900; color: var(--ui-accent); text-shadow: 2px 2px 0 rgba(0,0,0,.4); margin-bottom: 10px; letter-spacing: 1px; }
+  .ov-sub { font-size: 15px; line-height: 1.5; color: var(--ui-text); margin-bottom: 18px; }
+  .ov-sub .dim { color: var(--ui-dim); font-size: 13px; }
+  .ov-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    background: #1d2e2a; color: var(--ui-text);
+    border: 2px solid rgba(255,246,217,.4);
+    border-radius: 8px; padding: 10px 22px;
+    font-size: 16px; font-weight: 800; cursor: pointer;
+    letter-spacing: .5px;
+  }
+  .btn.primary { background: var(--ui-red); border-color: #ffb3a8; }
+  .btn:hover { filter: brightness(1.15); }
+  .btn:active { transform: translateY(1px); }
+  table.results { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 12px; }
+  table.results td { padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(255,246,217,.15); }
+  table.results td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  table.results tr.best td { color: var(--ui-accent); }
+  table.results tr.newbest td { color: #8dff9c; font-style: italic; text-align: center; padding-top: 10px; }
+
+  /* ---------- touch controls ---------- */
+  #touch-controls {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    z-index: 20;
+    pointer-events: none;
+  }
+  .touch-pad { display: flex; gap: 12px; pointer-events: auto; }
+  .touch-btn {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgba(38,59,54,.85);
+    border: 3px solid rgba(255,246,217,.4);
+    color: var(--ui-text); font-size: 24px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  .touch-btn:active { background: var(--ui-red); border-color: #ffb3a8; }
+  #touch-jump { width: 78px; height: 78px; font-size: 20px; background: rgba(216,55,44,.9); border-color: #ffb3a8; }
+  #touch-run { width: 70px; height: 70px; }
+  #touch-down { width: 56px; height: 56px; font-size: 18px; }
+  @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+    #touch-controls { display: none; }
+  }
+  @media (max-height: 480px) {
+    .touch-btn { width: 52px; height: 52px; font-size: 20px; }
+    #touch-jump { width: 64px; height: 64px; }
+    #touch-run { width: 58px; height: 58px; }
+    #touch-down { width: 46px; height: 46px; }
+    #hud { font-size: 13px; padding: 6px 8px; }
+    #hud .hud-group { gap: 8px; }
+    #hud .hud-item { padding: 2px 7px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="progress"><div id="hud-progress-fill"></div></div>
+
+<div id="hud">
+  <div class="hud-group">
+    <div class="hud-item"><b>SCORE</b><span id="hud-score">000000</span></div>
+    <div class="hud-item"><b>COINS</b><span id="hud-coins">00</span></div>
+    <div class="hud-item"><b>WORLD</b><span id="hud-world">1-1</span></div>
+  </div>
+  <div class="hud-group">
+    <div class="hud-item"><b>TIME</b><span id="hud-time">300</span></div>
+    <div class="hud-item"><b>LIVES</b><span id="hud-lives">3</span></div>
+    <div class="hud-item"><b>POWER</b><span id="hud-power">SMALL</span></div>
+    <div id="hud-buttons">
+      <button id="btn-mute" title="Mute">🔊</button>
+      <button id="btn-pause" title="Pause">⏸</button>
+    </div>
+  </div>
+</div>
+
+<div id="star-overlay"></div>
+<div id="popups"></div>
+<div id="toasts"></div>
+
+<div id="overlay" class="hidden">
+  <div class="overlay-card">
+    <div class="ov-title"></div>
+    <div class="ov-sub"></div>
+    <div class="ov-actions"></div>
+  </div>
+</div>
+
+<div id="touch-controls">
+  <div class="touch-pad">
+    <button class="touch-btn" id="touch-left">◀</button>
+    <button class="touch-btn" id="touch-right">▶</button>
+  </div>
+  <div class="touch-pad">
+    <button class="touch-btn" id="touch-down">▼</button>
+    <button class="touch-btn" id="touch-run">RUN</button>
+    <button class="touch-btn" id="touch-jump">JUMP</button>
+  </div>
+</div>
+
+<script type="module" src="./src/app/main.js"></script>
+</body>
+</html>
